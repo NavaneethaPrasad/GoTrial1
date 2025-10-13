@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"slices"
 )
 
 type Journalentries struct {
@@ -12,22 +13,46 @@ type Journalentries struct {
 	Squirrel bool     `json:"squirrel"`
 }
 
-func phi(n11, n10, n01, n00 float64) float64 {
-	numerator := n11*n00 - n10*n01
-	denominator := math.Sqrt((n11 + n10) * (n01 + n00) * (n11 + n01) * (n10 + n00))
-	if denominator == 0 {
-		return 0
-	}
-	return numerator / denominator
+type counts struct {
+	n00 uint
+	n10 uint
+	n01 uint
+	n11 uint
 }
 
-func contains(eventlist []string, targetevent string) bool {
-	for _, currentevent := range eventlist {
-		if currentevent == targetevent {
-			return true
+func getCounts(entries []Journalentries, event string) counts {
+	var n00, n10, n01, n11 uint
+	for _, i := range entries {
+		if slices.Contains(i.Events, event) {
+			//fmt.Println(i.Events, i.Squirrel)
+			if i.Squirrel {
+				n11++
+			} else {
+				n10++
+			}
+		} else {
+			if i.Squirrel {
+				n01++
+			} else {
+				n00++
+			}
 		}
 	}
-	return false
+
+	return counts{n00, n10, n01, n11}
+}
+
+func phi(count counts) float64 {
+	n00 := float64(count.n00)
+	n10 := float64(count.n10)
+	n01 := float64(count.n01)
+	n11 := float64(count.n11)
+	n := (n11*n00 - n10*n01)
+	d := math.Sqrt((n10 + n11) * (n01 + n00) * (n01 + n11) * (n10 + n00))
+	if d == 0 {
+		return 0
+	}
+	return n / d
 }
 
 func main() {
@@ -36,50 +61,34 @@ func main() {
 	err := json.Unmarshal(jsonData, &journal)
 	if err != nil {
 		fmt.Println("Couldn't unmarshal data", err)
-		return
 	}
-
-	// collect unique events
-	uniqueevents := make(map[string]bool)
+	map1 := make(map[string]float64)
 	for _, events := range journal {
-		for _, event := range events.Events {
-			uniqueevents[event] = true
+		for _, e := range events.Events {
+			c := getCounts(journal, e)
+			//fmt.Println(phi(c))
+			map1[e] = phi(c)
 		}
 	}
-
-	maxEvent := ""
-	minEvent := ""
-	maxPhi := math.Inf(-1)
-	minPhi := math.Inf(1)
-	fmt.Println("Event       Correlation")
-
-	//compute correlations
-	for event := range uniqueevents {
-		var n11, n10, n01, n00 float64
-		for _, entry := range journal {
-			has := contains(entry.Events, event)
-			squirrel := entry.Squirrel
-			if has && squirrel {
-				n11++
-			} else if has && !squirrel {
-				n10++
-			} else if !has && squirrel {
-				n01++
-			} else {
-				n00++
-			}
-		}
-		correlation := phi(n11, n10, n01, n00)
+	fmt.Println("Event\t\tCorrelation")
+	fmt.Println("--------------------------------------------")
+	for event, correlation := range map1 {
 		fmt.Printf("%-15s %.4f\n", event, correlation)
-		if correlation > maxPhi {
-			maxPhi = correlation
-			maxEvent = event
+	}
+
+	max := -1.0
+	min := 1.0
+	var maxEvent, minEvent string
+	for key, value := range map1 {
+		if value > max {
+			max = value
+			maxEvent = key
 		}
-		if correlation < minPhi {
-			minPhi = correlation
-			minEvent = event
+		if value < min {
+			min = value
+			minEvent = key
 		}
 	}
-	fmt.Println("\nMost positively correlated event:", maxEvent, maxPhi)
-	fmt.Println("Most negatively correlated event:", minEvent, minPhi)
+	fmt.Printf("Most Positively Correlated Event: %s = %f\n", maxEvent, max)
+	fmt.Printf("Most Negatively Correlated Event: %s = %f\n", minEvent, min)
 }
