@@ -38,8 +38,8 @@ func getCounts(entries []Journalentries, event string) counts {
 			}
 		}
 	}
-
-	return counts{n00, n10, n01, n11}
+	d := counts{n00: n00, n10: n10, n01: n01, n11: n11}
+	return d
 }
 
 func phi(count counts) float64 {
